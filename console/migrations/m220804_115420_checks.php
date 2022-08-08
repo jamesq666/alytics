@@ -9,7 +9,7 @@ class m220804_115420_checks extends Migration
 {
     public function up()
     {
-        $this->createTable('urls', [
+        $this->createTable('checks', [
             'id' => $this->primaryKey(),
             'date' => $this->integer(),
             'url' => $this->string(255),
@@ -20,6 +20,6 @@ class m220804_115420_checks extends Migration
 
     public function down()
     {
-        $this->dropTable('urls');
+        $this->dropTable('checks');
     }
 }

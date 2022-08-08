@@ -4,6 +4,7 @@ namespace backend\controllers;
 
 use common\models\Checks;
 use common\models\Urls;
+use yii\db\ActiveRecord;
 use yii\web\Controller;
 
 /**
@@ -12,48 +13,35 @@ use yii\web\Controller;
 class UrlsController extends Controller
 {
     /**
-     * @return string
+     * @return void
      */
     public function actionCheck()
     {
-        $urls = Urls::find()
-            ->indexBy('id')
-            ->asArray()
-            ->all();
-
-        foreach ($urls as $key => $url) {
-            $response = get_headers($url['url']);
-
-            $check = new Checks();
-            $check->url = $url['url'];
-            $check->http_code = mb_substr($response[0], 9, 3);
-            $check->try = 0;
-            $check->save();
-        }
-
-        //todo заменить на подходящий функционал с очередями
         while (true) {
-            sleep(60);
+            $urls = $this->getUrls();
 
-            foreach ($urls as $key => $url) {
-                $prev_check = Checks::find()
-                    ->where(['url' => $url['url']])
-                    ->orderBy('id DESC')
-                    ->limit(1)
-                    ->asArray()
-                    ->one();
+            if (empty($urls)) {
+                echo 'Список url-адресов пуст!';
+                break;
+            }
 
-                $er = (mb_substr($prev_check['http_code'], 0, 1) == '4') && ($prev_check['try'] < $url['try']);
+            foreach ($urls as $url) {
+                $prev_check = $this->getPrevCheck($url['url']);
 
-                if ($er || (time() - $prev_check['date']) >= $url['periodicity'] * 60) {
-                    $try = intval($prev_check['try']);
+                //есть пред. проверка ИЛИ ((первая цифра кода ответа = 4 И номер попытки < max кол-ва попыток) ИЛИ наступило время проверки)
+                if (empty($prev_check) || ((mb_substr($prev_check['http_code'], 0, 1) == '4' && $prev_check['try'] < $url['try']) || (time() - $prev_check['date']) >= $url['periodicity'] * 60)) {
                     $response = get_headers($url['url']);
+
+                    if ($response === false) {
+                        continue;
+                    }
 
                     $check = new Checks();
                     $check->url = $url['url'];
                     $check->http_code = mb_substr($response[0], 9, 3);
 
-                    if ($er) {
+                    if (mb_substr($prev_check['http_code'], 0, 1) == '4' && $prev_check['try'] < $url['try']) {
+                        $try = intval($prev_check['try']);
                         $check->try = ++$try;
                     } else {
                         $check->try = 0;
@@ -62,6 +50,32 @@ class UrlsController extends Controller
                     $check->save();
                 }
             }
+
+            sleep(60);
         }
+    }
+
+    /**
+     * @return array|ActiveRecord[]
+     */
+    public function getUrls()
+    {
+        return Urls::find()
+            ->indexBy('id')
+            ->asArray()
+            ->all();
+    }
+
+    /**
+     * @return array|ActiveRecord[]
+     */
+    public function getPrevCheck($url)
+    {
+        return Checks::find()
+            ->where(['url' => $url])
+            ->orderBy('id DESC')
+            ->limit(1)
+            ->asArray()
+            ->one();
     }
 }
